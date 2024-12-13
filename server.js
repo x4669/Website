@@ -13,43 +13,58 @@ let waitingUser = null;
 io.on("connection", (socket) => {
     console.log("A user connected");
 
-    socket.on("joinChat", () => {
+    socket.on("joinVideoChat", () => {
         if (waitingUser) {
             socket.partner = waitingUser;
             waitingUser.partner = socket;
 
-            waitingUser.emit("receiveMessage", "You are now connected to a stranger.");
-            socket.emit("receiveMessage", "You are now connected to a stranger.");
+            waitingUser.emit("startConnection");
+            socket.emit("startConnection");
 
             waitingUser = null;
         } else {
             waitingUser = socket;
-            socket.emit("receiveMessage", "Waiting for a stranger to join...");
         }
     });
 
-    socket.on("sendMessage", (message) => {
+    socket.on("offer", (offer) => {
         if (socket.partner) {
-            socket.partner.emit("receiveMessage", message);
+            socket.partner.emit("offer", offer);
         }
     });
 
-    socket.on("leaveChat", () => {
+    socket.on("answer", (answer) => {
         if (socket.partner) {
-            socket.partner.emit("receiveMessage", "The stranger has left the chat.");
+            socket.partner.emit("answer", answer);
+        }
+    });
+
+    socket.on("iceCandidate", (candidate) => {
+        if (socket.partner) {
+            socket.partner.emit("iceCandidate", candidate);
+        }
+    });
+
+    socket.on("leaveVideoChat", () => {
+        if (socket.partner) {
             socket.partner.partner = null;
+            socket.partner.emit("endConnection");
         }
         socket.partner = null;
-        waitingUser = waitingUser === socket ? null : waitingUser;
+        if (waitingUser === socket) {
+            waitingUser = null;
+        }
     });
 
     socket.on("disconnect", () => {
-        console.log("A user disconnected");
         if (socket.partner) {
-            socket.partner.emit("receiveMessage", "The stranger has left the chat.");
             socket.partner.partner = null;
+            socket.partner.emit("endConnection");
         }
-        waitingUser = waitingUser === socket ? null : waitingUser;
+        if (waitingUser === socket) {
+            waitingUser = null;
+        }
+        console.log("A user disconnected");
     });
 });
 
