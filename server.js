@@ -1,73 +1,41 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+// Backend: server.js
+const express = require('express');
+const { Server } = require('socket.io');
+const http = require('http');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static("public"));
+const PORT = process.env.PORT || 3000;
 
-let waitingUser = null;
+app.use(express.static('public'));
 
-io.on("connection", (socket) => {
-    console.log("A user connected");
+let users = [];
 
-    socket.on("joinVideoChat", () => {
-        if (waitingUser) {
-            socket.partner = waitingUser;
-            waitingUser.partner = socket;
+io.on('connection', (socket) => {
+  console.log(`User connected: ${socket.id}`);
 
-            waitingUser.emit("startConnection");
-            socket.emit("startConnection");
+  // Handle new user joining
+  socket.on('join', () => {
+    users.push(socket.id);
+    if (users.length >= 2) {
+      const [user1, user2] = users.splice(0, 2);
+      io.to(user1).emit('matched', user2);
+      io.to(user2).emit('matched', user1);
+    }
+  });
 
-            waitingUser = null;
-        } else {
-            waitingUser = socket;
-        }
-    });
+  // Relay signaling data
+  socket.on('signal', (data) => {
+    io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
+  });
 
-    socket.on("offer", (offer) => {
-        if (socket.partner) {
-            socket.partner.emit("offer", offer);
-        }
-    });
-
-    socket.on("answer", (answer) => {
-        if (socket.partner) {
-            socket.partner.emit("answer", answer);
-        }
-    });
-
-    socket.on("iceCandidate", (candidate) => {
-        if (socket.partner) {
-            socket.partner.emit("iceCandidate", candidate);
-        }
-    });
-
-    socket.on("leaveVideoChat", () => {
-        if (socket.partner) {
-            socket.partner.partner = null;
-            socket.partner.emit("endConnection");
-        }
-        socket.partner = null;
-        if (waitingUser === socket) {
-            waitingUser = null;
-        }
-    });
-
-    socket.on("disconnect", () => {
-        if (socket.partner) {
-            socket.partner.partner = null;
-            socket.partner.emit("endConnection");
-        }
-        if (waitingUser === socket) {
-            waitingUser = null;
-        }
-        console.log("A user disconnected");
-    });
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log(`User disconnected: ${socket.id}`);
+    users = users.filter((id) => id !== socket.id);
+  });
 });
 
-server.listen(3000, () => {
-    console.log("Server is running on http://localhost:3000");
-});
+server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
